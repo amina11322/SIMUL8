@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Graph & Problem</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="logo">SIMUL8<span class="accent">PHYSICS</span></div>
+      <nav class="nav">
+        <a href="index.html" class="nav-link">About</a>
+        <a href="simulations.html" class="nav-link">Simulations</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container graph-main">
+    <article class="card">
+      <h1 id="graphTitle">Graph</h1>
+      <canvas id="chart" height="180"></canvas>
+
+      <section class="problem-box">
+        <h3>Generated Problem</h3>
+        <div id="problemText"></div>
+        <details class="solution"><summary>Show answer</summary><div id="answerText"></div></details>
+      </section>
+
+      <div class="nav-actions">
+        <a href="simulations.html" class="btn">Back to simulation</a>
+      </div>
+    </article>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
