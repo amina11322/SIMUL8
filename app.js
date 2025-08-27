@@ -1,14 +1,28 @@
+/* app.js
+   Full simulation host (replace your existing app.js with this)
+   - preserves the original UI hooks and behavior
+   - adds: circular motion, collision, electric-field simulations
+   - injects options for new sims if not present in the HTML
+*/
 
+/* tiny helpers */
 function qs(sel){return document.querySelector(sel);}
 function qsa(sel){return Array.from(document.querySelectorAll(sel));}
 function paramURL(params){ return Object.entries(params).map(([k,v])=> `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&'); }
 
+/* ---------- New simulations added below ----------
+   Each simulation returns the same small API:
+     { start(), pause(), reset(), params }
+   so loadSimulation/restartSim can treat them uniformly.
+*/
 
+/* ---------- Projectile, Pendulum, Spring (unchanged logic) ---------- */
+/* (I left these mostly as in your earlier file; included here for one-file completeness) */
 
 function projectileSim(canvas, params){
   const ctx = canvas.getContext('2d');
   let running = true, t = 0;
-  const scale = Math.max(4, Math.min(8, Math.floor(canvas.width/150))); 
+  const scale = Math.max(4, Math.min(8, Math.floor(canvas.width/150))); // adapt scale a bit
   function step(dt){
     if(!running) return;
     t += dt;
@@ -18,15 +32,15 @@ function projectileSim(canvas, params){
   function draw(){
     const W = canvas.width, H = canvas.height;
     ctx.clearRect(0,0,W,H);
-    
+    // ground baseline
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, H-30, W, 30);
-    
+    // physics
     const g = params.g, u = params.speed, a = params.angle * Math.PI/180;
     const vx = u * Math.cos(a), vy0 = u * Math.sin(a);
-    const x = vx * t; 
-    const y = vy0 * t - 0.5 * g * t * t; 
-   
+    const x = vx * t; // meters
+    const y = vy0 * t - 0.5 * g * t * t; // meters (vertical positive up)
+    // draw path (sampled)
     ctx.beginPath();
     ctx.strokeStyle = '#DFB6B2';
     ctx.lineWidth = 3;
@@ -36,12 +50,12 @@ function projectileSim(canvas, params){
       if(s===0) ctx.moveTo(xs,ys); else ctx.lineTo(xs,ys);
     }
     ctx.stroke();
-    
+    // projectile
     const px = 60 + x*scale;
     const py = H-30 - y*scale;
     ctx.fillStyle = '#854F6C';
     ctx.beginPath(); ctx.arc(px,py,10,0,Math.PI*2); ctx.fill();
-   
+    // HUD
     ctx.fillStyle = '#2B124C';
     ctx.font = '12px sans-serif';
     ctx.fillText(`t=${t.toFixed(2)}s`, 12, 18);
@@ -60,7 +74,7 @@ function pendulumSim(canvas, params){
   function step(dt){
     if(!running) return;
     const L = params.length, g = params.g;
-    const alpha = - (g / L) * theta; 
+    const alpha = - (g / L) * theta; // small-angle
     omega += alpha * dt;
     theta += omega * dt;
     t+=dt;
@@ -117,14 +131,15 @@ function springSim(canvas, params){
   return { start(){}, pause(){}, reset(){}, params };
 }
 
-
+/* ---------- NEW: Circular Motion ---------- */
+/* draw a dot moving on a circle; keeps a trace array for a tail */
 function circularSim(canvas, params){
   const ctx = canvas.getContext('2d');
   let running = true, angle = 0;
   const trace = []; const maxTrace = 120;
   function step(){
     if(!running) return;
-    angle += params.angularSpeed * 0.016; 
+    angle += params.angularSpeed * 0.016; // rad per frame (~dt=0.016)
     draw();
     requestAnimationFrame(step);
   }
@@ -171,19 +186,20 @@ function circularSim(canvas, params){
   return { start, pause, reset, params };
 }
 
-
+/* ---------- NEW: Collision (two balls) ---------- */
+/* 2D elastic collision with optional restitution slider (0..1) */
 function collisionSim(canvas, params){
   const ctx = canvas.getContext('2d');
   let running = true;
-  
+  // initial in-canvas positions (will be set in reset)
   const ball1 = { x:0, y:0, vx:0, vy:0, r: params.r1 || 20, m: params.m1 || 2, color:'#DFB6B2' };
   const ball2 = { x:0, y:0, vx:0, vy:0, r: params.r2 || 20, m: params.m2 || 1, color:'#854F6C' };
-  const pxScale = 20; 
+  const pxScale = 20; // scale factor for mapping velocity units to px/s (tweakable)
   function placeInitial(){
     const W = canvas.width, H = canvas.height;
     ball1.x = W*0.25; ball1.y = H/2;
     ball2.x = W*0.75; ball2.y = H/2;
-    
+    // convert input velocities (m/s) to px/s for visuals
     ball1.vx = (params.v1||0) * pxScale; ball1.vy = 0;
     ball2.vx = (params.v2||0) * pxScale; ball2.vy = 0;
     ball1.m = params.m1; ball2.m = params.m2;
@@ -196,12 +212,12 @@ function collisionSim(canvas, params){
     requestAnimationFrame(step);
   }
   function update(dt){
-    
+    // simple Euler integration
     ball1.x += ball1.vx * dt;
     ball1.y += ball1.vy * dt;
     ball2.x += ball2.vx * dt;
     ball2.y += ball2.vy * dt;
-    // wall collisions 
+    // wall collisions (bounce)
     const W = canvas.width, H = canvas.height;
     [ball1, ball2].forEach(b=>{
       if(b.x - b.r < 0){ b.x = b.r; b.vx *= -1; }
@@ -209,7 +225,7 @@ function collisionSim(canvas, params){
       if(b.y - b.r < 0){ b.y = b.r; b.vy *= -1; }
       if(b.y + b.r > H){ b.y = H - b.r; b.vy *= -1; }
     });
-    
+    // detect collision between ball1 and ball2
     const dx = ball2.x - ball1.x;
     const dy = ball2.y - ball1.y;
     const dist = Math.hypot(dx,dy);
@@ -226,16 +242,19 @@ function collisionSim(canvas, params){
       const v2t = ball2.vx * tx + ball2.vy * ty;
       // restitution
       const e = Math.max(0, Math.min(1, params.e!==undefined?params.e:1)); // 1=elastic
-     
+      // new normal velocities after 1D collision with restitution
+      // compute using conservation of momentum and relative velocity scaled by e:
+      // v1n' = (m1*v1n + m2*v2n + m2*e*(v2n - v1n)) / (m1 + m2)
+      // v2n' = (m1*v1n + m2*v2n + m1*e*(v1n - v2n)) / (m1 + m2)
       const m1 = ball1.m, m2 = ball2.m;
       const v1nPrime = (m1*v1n + m2*v2n + m2*e*(v2n - v1n)) / (m1 + m2);
       const v2nPrime = (m1*v1n + m2*v2n + m1*e*(v1n - v2n)) / (m1 + m2);
-      
+      // convert scalar normal/tangential velocities back to vectors
       ball1.vx = v1nPrime * nx + v1t * tx;
       ball1.vy = v1nPrime * ny + v1t * ty;
       ball2.vx = v2nPrime * nx + v2t * tx;
       ball2.vy = v2nPrime * ny + v2t * ty;
-      
+      // simple positional correction to prevent sticking
       const overlap = (ball1.r + ball2.r) - dist;
       const correction = overlap / 2;
       ball1.x -= nx * correction;
@@ -268,15 +287,16 @@ function collisionSim(canvas, params){
   return { start, pause, reset, params };
 }
 
-
+/* ---------- NEW: Electric field visualization (vector/quiver) ---------- */
+/* Two adjustable charges, show field vectors sampled on a coarse grid */
 function electricSim(canvas, params){
   const ctx = canvas.getContext('2d');
   let running = true;
-  
+  // charges will be stored as objects {x,y,q}
   let charges = [];
   function placeCharges(){
     const W = canvas.width, H = canvas.height;
-   
+    // two charges by default at left and right
     charges = [
       { x: W*0.33, y: H*0.5, q: params.q1 || 3 },
       { x: W*0.67, y: H*0.5, q: params.q2 || -3 }
@@ -285,7 +305,7 @@ function electricSim(canvas, params){
   function drawField(){
     const W = canvas.width, H = canvas.height;
     ctx.clearRect(0,0,W,H);
-    // draw charges
+    // charges
     charges.forEach(ch=>{
       ctx.beginPath();
       ctx.fillStyle = ch.q >= 0 ? '#854F6C' : '#DFB6B2';
@@ -307,7 +327,7 @@ function electricSim(canvas, params){
           const r2 = dx*dx + dy*dy;
           if(r2 < 16) { Ex = Ex; Ey = Ey; continue; }
           const r3 = Math.pow(r2, 1.5);
-          
+         
           Ex += ch.q * dx / r3;
           Ey += ch.q * dy / r3;
         }
@@ -318,10 +338,10 @@ function electricSim(canvas, params){
         const len = Math.min(14, mag * scale);
         const x2 = gx + ux * len;
         const y2 = gy + uy * len;
-        // arrow shaft
+        
         ctx.strokeStyle = 'rgba(43,18,76,0.75)'; ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.moveTo(gx,gy); ctx.lineTo(x2,y2); ctx.stroke();
-        // arrow head
+        
         ctx.beginPath();
         ctx.moveTo(x2, y2);
         ctx.lineTo(x2 - ux*4 - uy*3, y2 - uy*4 + ux*3);
@@ -414,19 +434,19 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
     function loadSimulation(key){
       activeSimKey = key;
-      // adjust title
+      
       const mapTitle = {
         projectile:'Projectile motion', pendulum:'Pendulum (small-angle)', spring:'Spring–mass (SHM)',
         circular:'Circular motion', collision:'Collision (2 balls)', electric:'Electric field (vectors)'
       };
       simTitle.textContent = mapTitle[key] || key;
-      // clear previous
+      
       if(activeSimInstance && activeSimInstance.reset) activeSimInstance.reset();
       clearControls();
 
       const p = Object.assign({}, simParamsPreset[key]);
 
-     
+      
       if(key === 'projectile'){
         controlsContainer.appendChild(makeRange('Speed (m/s)',1,80,1,p.speed,(v)=>{ p.speed=v; restartSim(); }));
         controlsContainer.appendChild(makeRange('Angle (°)',0,85,1,p.angle,(v)=>{ p.angle=v; restartSim(); }));
@@ -464,7 +484,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
       restartSim();
     }
 
-    
+  
     const sel = qs('#simSelect');
     sel.addEventListener('change', ()=> loadSimulation(sel.value));
     
@@ -514,7 +534,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
       window.location.href = 'graph.html?' + q;
     });
 
-  
+    
     if(toggleControls && controlDrawer){
       toggleControls.addEventListener('click', ()=>{
         if(controlDrawer.style.display === 'none'){ controlDrawer.style.display='block'; toggleControls.textContent='Hide'; }
@@ -523,7 +543,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
     }
   } 
 
-
+  
   const chartEl = document.getElementById('chart');
   if(chartEl && typeof Chart !== 'undefined'){
     const params = Object.fromEntries(new URLSearchParams(location.search));
@@ -575,7 +595,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
     } else if(sim==='circular'){
       const radius = parseFloat(params.radius) || 100;
       const omega = parseFloat(params.angularSpeed) || 1.2;
-     
+      
       const T = 2*Math.PI / omega;
       const steps = 120;
       const labels=[]; const data=[];
@@ -585,7 +605,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
       qs('#answerText').innerHTML = `T = 2π/ω = ${(2*Math.PI/omega).toFixed(3)} s`;
       qs('#graphTitle').textContent = 'Circular motion: x(t)';
     } else if(sim==='collision'){
-      
+     
       const m1 = parseFloat(params.m1) || 2, m2 = parseFloat(params.m2) || 1;
       const u1 = parseFloat(params.v1) || 3, u2 = parseFloat(params.v2) || -1;
       const e = parseFloat(params.e) || 1;
@@ -598,18 +618,17 @@ document.addEventListener('DOMContentLoaded', ()=>{
       qs('#answerText').innerHTML = `v1' = ${v1p.toFixed(3)} m/s; v2' = ${v2p.toFixed(3)} m/s`;
       qs('#graphTitle').textContent = 'Collision: velocities (before/after)';
     } else if(sim==='electric'){
-     
+      
       const q1 = parseFloat(params.q1) || 3, q2 = parseFloat(params.q2) || -3;
       const W = chartEl.width, H = chartEl.height;
      
       const N = 120; const labels=[]; const data=[];
       for(let i=0;i<N;i++){
         const x = (i/(N-1))*1.0; 
-        
         const cx1 = 0.33, cx2 = 0.67;
         const dx1 = x - cx1, dx2 = x - cx2;
         const r1 = Math.abs(dx1); const r2 = Math.abs(dx2);
-      
+        
         const E1 = (r1>0.0001) ? q1 / (r1*r1) : 0;
         const E2 = (r2>0.0001) ? q2 / (r2*r2) : 0;
         const Emag = Math.abs(E1) + Math.abs(E2);
@@ -623,4 +642,5 @@ document.addEventListener('DOMContentLoaded', ()=>{
     }
   } 
 
-});
+}); 
+
